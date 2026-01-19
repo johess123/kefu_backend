@@ -8,3 +8,4 @@ pydantic-settings
 google-adk
 line-bot-sdk
 aiohttp
+pymongo
