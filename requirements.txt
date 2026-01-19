@@ -9,3 +9,4 @@ google-adk
 line-bot-sdk
 aiohttp
 pymongo
+motor
