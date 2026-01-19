@@ -1,0 +1,10 @@
+fastapi
+uvicorn
+python-multipart
+google-genai
+python-dotenv
+pydantic
+pydantic-settings
+google-adk
+line-bot-sdk
+aiohttp
