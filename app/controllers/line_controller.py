@@ -60,6 +60,7 @@ async def deploy_line(data: DeployLineRequest):
         # 1. 設置 Webhook URL，帶入 agent_{agent_id}
         webhook_key = f"agent_{data.agent_id}"
         webhook_url = f"{settings.BACKEND_URL}/api/line-webhook/{webhook_key}"
+        print("部署網址:", webhook_url)
         # webhook_url = f"https://56f6f1b025b5.ngrok-free.app/api/line-webhook/{webhook_key}"
         
         deploy_config = {
