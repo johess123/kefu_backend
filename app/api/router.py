@@ -1,16 +1,16 @@
 from fastapi import APIRouter, Request, Header
-from app.models.schemas import FormData, ChatRequest, DeployLineRequest, LoginData
+from app.models.schemas import FormData, ChatRequest, DeployLineRequest, LoginData, GenerateFAQRequest, OptimizeFAQRequest
 from app.controllers import merchant_controller, chat_controller, line_controller
 from typing import Dict, Any
+from app.core.database import admin_collection
+from datetime import datetime
+from app.services import agent_service
 
 api_router = APIRouter()
 
 @api_router.get("/init_session")
 async def init_session():
     return await chat_controller.init_session()
-
-from app.core.database import admin_collection
-from datetime import datetime
 
 @api_router.post("/admin/login")
 async def login_api(data: LoginData):
@@ -39,19 +39,26 @@ async def login_api(data: LoginData):
     
     return {"isAdmin": True}
 
+@api_router.post("/generate_faqs")
+async def generate_faqs(data: GenerateFAQRequest):
+    print(f"Generate FAQs Request: {data.brandDescription}")
+    return await merchant_controller.generate_faqs(data)
+
+@api_router.post("/optimize_faq")
+async def optimize_faq(data: OptimizeFAQRequest):
+    print(f"Optimize FAQ Request: {data.question}")
+    return await merchant_controller.optimize_faq(data)
+
 @api_router.post("/generate_prompt")
 async def generate_prompt(data: FormData):
-    print(f"Generate Prompt Request: {data}")
     return await merchant_controller.generate_prompt(data)
 
 @api_router.get("/admin/agents")
 async def get_agents(userId: str):
-    from app.services import agent_service
     return await agent_service.get_agents_by_admin(userId)
 
 @api_router.get("/admin/agent/{agent_id}")
 async def get_agent(agent_id: str, userId: str):
-    from app.services import agent_service
     agent = await agent_service.get_agent_by_id(agent_id)
     if agent and agent.get("admin_id") == userId:
         return agent
@@ -71,6 +78,50 @@ async def chat(data: ChatRequest):
 async def deploy_line(data: DeployLineRequest):
     print(f"Deploy Line Request: {data}")
     return await line_controller.deploy_line(data)
+
+@api_router.get("/admin/agent/{agent_id}/available_subagents")
+async def get_available_subagents(agent_id: str):
+    return await agent_service.get_available_subagents(agent_id)
+
+@api_router.post("/admin/agent/{agent_id}/add_subagent")
+async def add_subagent(agent_id: str, data: Dict[str, str]):
+    subagent_id = data.get("subagent_id")
+    if not subagent_id:
+        return {"error": "subagent_id is required"}
+    success = await agent_service.add_subagent_to_agent(agent_id, subagent_id)
+    return {"status": "ok" if success else "error"}
+
+@api_router.post("/admin/agent/{agent_id}/update_faqs")
+async def update_faqs(agent_id: str, data: Dict[str, Any]):
+    admin_id = data.get("userId")
+    faqs = data.get("faqs")
+    if not admin_id or faqs is None:
+        return {"error": "userId and faqs are required"}
+    success = await agent_service.update_agent_faqs(agent_id, admin_id, faqs)
+    return {"status": "ok" if success else "error"}
+
+@api_router.post("/admin/agent/{agent_id}/update_handoff")
+async def update_handoff(agent_id: str, data: Dict[str, Any]):
+    admin_id = data.get("userId")
+    triggers = data.get("handoff_triggers")
+    custom = data.get("handoff_custom")
+    if not admin_id or triggers is None:
+        return {"error": "userId and handoff_triggers are required"}
+    success = await agent_service.update_agent_handoff(agent_id, admin_id, triggers, custom or "")
+    return {"status": "ok" if success else "error"}
+
+@api_router.get("/admin/agent/{agent_id}/stats")
+async def get_agent_stats(agent_id: str, userId: str):
+    return await agent_service.get_agent_token_stats(agent_id, userId)
+
+@api_router.post("/admin/agent/{agent_id}/update_config")
+async def update_agent_config(agent_id: str, data: Dict[str, Any]):
+    admin_id = data.get("userId")
+    updates = data.get("updates")
+    if not admin_id or updates is None:
+        return {"error": "userId and updates are required"}
+    success = await agent_service.update_agent_config(agent_id, admin_id, updates)
+    return {"status": "ok" if success else "error"}
 
 @api_router.post("/line-webhook/{channel_id}")
 async def line_webhook(channel_id: str, request: Request, x_line_signature: str = Header(None)):

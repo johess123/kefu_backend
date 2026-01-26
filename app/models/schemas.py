@@ -9,11 +9,16 @@ class FAQItem(BaseModel):
 
 class FormData(BaseModel):
     brandDescription: str
+    websiteUrl: Optional[str] = ""
     tone: str
     toneAvoid: Optional[str] = ""
     faqs: List[FAQItem]
     handoffTriggers: List[str]
     handoffCustomTrigger: Optional[str] = ""
+    handoffContactValue: Optional[str] = None
+    handoffMethod: Optional[str] = None
+    line_user_id: Optional[str] = None
+    agent_id: Optional[str] = None
 
 class ChatRequest(BaseModel):
     message: str
@@ -53,3 +58,28 @@ class MerchantExtraction(BaseModel):
 class LoginData(BaseModel):
     userId: str
     name: Optional[str] = None
+
+class Subagent(BaseModel):
+    id: Optional[str] = Field(None, alias="_id")
+    title: str
+    name: str
+    description: str
+    enabled: bool
+    created_at: Optional[Any] = None
+
+class GenerateFAQRequest(BaseModel):
+    brandDescription: str
+    websiteUrl: Optional[str] = ""
+    line_user_id: Optional[str] = None
+
+class FAQPair(BaseModel):
+    q: str
+    a: str
+
+class GeneratedFAQs(BaseModel):
+    faqs: List[FAQPair]
+
+class OptimizeFAQRequest(BaseModel):
+    question: str
+    answer: str
+    line_user_id: Optional[str] = None

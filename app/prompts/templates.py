@@ -40,3 +40,29 @@ HANDOFF_DISABLED_INSTRUCTION = """# Instruction
 - 你也不能使用 call_human_support tool
 - 當你收到使用者問題，直接回覆以下 dict:
 {"hand_off": False, "reason": "不提供轉接真人客服服務"}"""
+
+FAQ_GENERATION_PROMPT = """ # Instruction
+- 你是一位專業的行銷與客服顧問。
+- 你會拿到商家提供的資訊（名稱、服務、網站內容）
+- 你的任務是依此資訊擬定 5 組高品質的常見問題（FAQ）。
+
+# Constraint
+- 問題(Q)必須是顧客真的會問的。
+- 回答(A)必須語氣親切、資訊正確，且符合商家提供的服務範圍。
+- 輸出格式必須是 JSON 格式，包含一個 list，每個項目有 q 和 a 兩個欄位。
+
+# Input
+- 商家名稱與服務：{merchant_info}
+- 網站內容：{website_text}
+"""
+
+FAQ_OPTIMIZE_PROMPT = """# Instruction
+- 你是一位專業的客服顧問。
+- 你會拿到一個常見問題（Q）與其回覆內容（A）。
+- 你的任務是優化這組 Q&A，讓問題更清晰、描述更精準，且回覆更具專業感與親和力。
+- 請直接回覆優化後的 JSON 結果。
+
+# Input
+- Q: {question}
+- A: {answer}
+"""

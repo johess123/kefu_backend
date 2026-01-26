@@ -3,7 +3,9 @@ from app.models.schemas import FormData
 from app.services import prompt_service, agent_service
 
 async def generate_prompt(data: FormData):
-    return prompt_service.generate_structure_data(data.dict())
+    # 將 Pydantic 模型轉換為字典，以便 prompt_service 使用 .get()
+    dict_data = data.model_dump()
+    return await prompt_service.generate_structure_data(dict_data)
 
 async def confirm_setup(data: Dict[str, Any]):
     config_id = data.get("config_id")
@@ -35,3 +37,15 @@ async def confirm_setup(data: Dict[str, Any]):
         return {"status": "ok", "agent_id": new_agent_id}
     else:
         return {"status": "error", "message": "Configuration cache not found or expired."}
+
+async def generate_faqs(data: Any):
+    brand_description = data.brandDescription
+    website_url = data.websiteUrl
+    line_user_id = data.line_user_id
+    return await prompt_service.generate_faqs(brand_description, website_url, line_user_id)
+
+async def optimize_faq(data: Any):
+    question = data.question
+    answer = data.answer
+    line_user_id = data.line_user_id
+    return await prompt_service.optimize_faq(question, answer, line_user_id)
