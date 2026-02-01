@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Request, Header
-from app.models.schemas import FormData, ChatRequest, DeployLineRequest, LoginData, GenerateFAQRequest, OptimizeFAQRequest
+from app.models.schemas import FormData, ChatRequest, DeployLineRequest, LoginData, GenerateFAQRequest, OptimizeFAQRequest, AnalyzeFAQsRequest
 from app.controllers import merchant_controller, chat_controller, line_controller
 from typing import Dict, Any
 from app.core.database import admin_collection
@@ -16,22 +16,31 @@ async def init_session():
 async def login_api(data: LoginData):
     print(f"Login API Request received for userId: {data.userId}")
     
+    # 檢查 admin_collection 中是否有 line_id = data.userId 的
+    admin = await admin_collection.find_one({"line_id": data.userId})
+    
+    if not admin:
+        print(f"Login failed: user {data.userId} is not an admin")
+        return {"isAdmin": False}
+
     try:
-        # 記錄或更新管理者資訊
+        ## 記錄或
+        # 更新管理者資訊
         result = await admin_collection.update_one(
             {"line_id": data.userId},
             {
                 "$set": {
                     "name": data.name or data.userId,
                     "login_at": datetime.now()
-                },
-                "$setOnInsert": {
-                    "created_at": datetime.now()
+                # },
+                # "$setOnInsert": {
+                #     "created_at": datetime.now()
                 }
-            },
-            upsert=True
+            }
+            # },
+            # upsert=True
         )
-        print(f"Admin DB update result: matched={result.matched_count}, upserted_id={result.upserted_id}")
+        print(f"Admin DB update result: matched={result.matched_count}")
     except Exception as e:
         print(f"Admin DB login error: {str(e)}")
         import traceback
@@ -48,6 +57,11 @@ async def generate_faqs(data: GenerateFAQRequest):
 async def optimize_faq(data: OptimizeFAQRequest):
     print(f"Optimize FAQ Request: {data.question}")
     return await merchant_controller.optimize_faq(data)
+
+@api_router.post("/analyze_faqs")
+async def analyze_faqs(data: AnalyzeFAQsRequest):
+    print(f"Analyze FAQs Request for user: {data.line_user_id}")
+    return await merchant_controller.analyze_faqs(data)
 
 @api_router.post("/generate_prompt")
 async def generate_prompt(data: FormData):

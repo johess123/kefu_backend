@@ -3,8 +3,8 @@ from typing import Dict, Any, Optional
 from google import genai
 from google.genai import types
 from app.core.config import settings
-from app.models.schemas import MerchantExtraction, GeneratedFAQs, FAQPair
-from app.prompts.templates import EXTRACTION_PROMPT, FAQ_GENERATION_PROMPT, FAQ_OPTIMIZE_PROMPT
+from app.models.schemas import MerchantExtraction, GeneratedFAQs, FAQPair, FAQAnalysisReport
+from app.prompts.templates import EXTRACTION_PROMPT, FAQ_GENERATION_PROMPT, FAQ_OPTIMIZE_PROMPT, FAQ_ANALYSIS_PROMPT
 from app.core.database import used_token_collection
 from datetime import datetime
 
@@ -224,4 +224,52 @@ async def optimize_faq(question: str, answer: str, line_user_id: Optional[str] =
         return FAQPair.model_validate_json(response.text).model_dump()
     except Exception as e:
         print(f"FAQ 優化失敗: {e}")
+        return {"error": str(e)}
+async def analyze_faqs(brand_description: str, faqs: list, line_user_id: Optional[str] = None) -> dict:
+    try:
+        import json
+        faqs_json = json.dumps([{"id": f["id"], "q": f["question"], "a": f["answer"]} for f in faqs], ensure_ascii=False)
+        
+        prompt = FAQ_ANALYSIS_PROMPT.format(
+            brand_description=brand_description,
+            faqs_json=faqs_json
+        )
+        
+        response = await client.aio.models.generate_content(
+            model=settings.GENERAL_MODEL,
+            config=types.GenerateContentConfig(
+                response_mime_type="application/json",
+                response_schema=FAQAnalysisReport
+            ),
+            contents=[types.Part.from_text(text=prompt)]
+        )
+        
+        # 記錄健檢 FAQ 的 Token 消耗
+        usage = response.usage_metadata
+        a_input = usage.prompt_token_count
+        a_output = usage.candidates_token_count
+        a_thought = usage.thoughts_token_count or 0
+        a_tool = usage.tool_use_prompt_token_count or 0
+        
+        await used_token_collection.insert_one({
+            "chat_id": None,
+            "admin_id": line_user_id,
+            "agent_id": None,
+            "subagent_id": None,
+            "session_id": None,
+            "model": settings.GENERAL_MODEL,
+            "usage_type": "AI 健檢 FAQ",
+            "usage": {
+                "input_token": a_input,
+                "output_token": a_output,
+                "tool_token": a_tool,
+                "thought_token": a_thought,
+                "total_token": a_input + a_output + a_tool + a_thought
+            },
+            "created_at": datetime.now()
+        })
+        
+        return FAQAnalysisReport.model_validate_json(response.text).model_dump()
+    except Exception as e:
+        print(f"FAQ 健檢失敗: {e}")
         return {"error": str(e)}

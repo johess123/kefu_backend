@@ -83,3 +83,18 @@ class OptimizeFAQRequest(BaseModel):
     question: str
     answer: str
     line_user_id: Optional[str] = None
+class FAQAnalysisSuggestion(BaseModel):
+    id: str
+    suggestion: str
+    optimized_q: str
+    optimized_a: str
+
+class FAQAnalysisReport(BaseModel):
+    score: int
+    report: str
+    suggestions: List[FAQAnalysisSuggestion]
+
+class AnalyzeFAQsRequest(BaseModel):
+    faqs: List[FAQItem]
+    brandDescription: str
+    line_user_id: Optional[str] = None

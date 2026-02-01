@@ -49,3 +49,9 @@ async def optimize_faq(data: Any):
     answer = data.answer
     line_user_id = data.line_user_id
     return await prompt_service.optimize_faq(question, answer, line_user_id)
+
+async def analyze_faqs(data: Any):
+    brand_description = data.brandDescription
+    faqs = [f.model_dump() for f in data.faqs]
+    line_user_id = data.line_user_id
+    return await prompt_service.analyze_faqs(brand_description, faqs, line_user_id)

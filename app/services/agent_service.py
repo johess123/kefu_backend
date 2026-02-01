@@ -3,6 +3,7 @@ import json
 import asyncio
 import uuid
 from google.adk import Runner
+from google.adk.agents.run_config import RunConfig
 from adk_mongodb_session.mongodb.sessions.mongodb_session_service import MongodbSessionService
 from google.genai import types
 from google import genai
@@ -324,7 +325,15 @@ async def run_chat(
         async for event in runner.run_async(
             user_id=target_user_id,
             session_id=target_session_id,
-            new_message=content
+            new_message=content,
+            run_config=RunConfig(
+                context_window_compression=types.ContextWindowCompressionConfig(
+                    trigger_tokens=90000,  # 觸發壓縮的 token 數
+                    sliding_window=types.SlidingWindow(
+                        target_tokens=75000,   # 壓縮後保留最近的 token 數
+                    ),
+                ),
+            )
         ):
             if hasattr(event, 'text') and event.text:
                 response_text += str(event.text)
