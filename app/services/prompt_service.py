@@ -7,6 +7,9 @@ from app.models.schemas import MerchantExtraction, GeneratedFAQs, FAQPair, FAQAn
 from app.prompts.templates import EXTRACTION_PROMPT, FAQ_GENERATION_PROMPT, FAQ_OPTIMIZE_PROMPT, FAQ_ANALYSIS_PROMPT
 from app.core.database import used_token_collection
 from datetime import datetime
+from zoneinfo import ZoneInfo
+
+TAIPEI_TZ = ZoneInfo("Asia/Taipei")
 
 # 使用 settings.GOOGLE_API_KEY
 client = genai.Client(api_key=settings.GOOGLE_API_KEY)
@@ -74,7 +77,7 @@ async def generate_structure_data(form_data: dict) -> dict:
                 "thought_token": thought_token,
                 "total_token": input_token + output_token + thought_token
             },
-            "created_at": datetime.now()
+            "created_at": datetime.now(TAIPEI_TZ)
         })
         return {
             "config_id": config_id,
@@ -133,7 +136,7 @@ async def generate_faqs(brand_description: str, website_url: str, line_user_id: 
                     "thought_token": w_thought,
                     "total_token": w_input + w_output + w_tool + w_thought
                 },
-                "created_at": datetime.now()
+                "created_at": datetime.now(TAIPEI_TZ)
             })
 
         prompt = FAQ_GENERATION_PROMPT.format(
@@ -172,7 +175,7 @@ async def generate_faqs(brand_description: str, website_url: str, line_user_id: 
                 "thought_token": f_thought,
                 "total_token": f_input + f_output + f_tool + f_thought
             },
-            "created_at": datetime.now()
+            "created_at": datetime.now(TAIPEI_TZ)
         })
 
         return GeneratedFAQs.model_validate_json(response.text).model_dump()
@@ -218,7 +221,7 @@ async def optimize_faq(question: str, answer: str, line_user_id: Optional[str] =
                 "thought_token": u_thought,
                 "total_token": u_input + u_output + u_tool + u_thought
             },
-            "created_at": datetime.now()
+            "created_at": datetime.now(TAIPEI_TZ)
         })
 
         return FAQPair.model_validate_json(response.text).model_dump()
@@ -266,7 +269,7 @@ async def analyze_faqs(brand_description: str, faqs: list, line_user_id: Optiona
                 "thought_token": a_thought,
                 "total_token": a_input + a_output + a_tool + a_thought
             },
-            "created_at": datetime.now()
+            "created_at": datetime.now(TAIPEI_TZ)
         })
         
         return FAQAnalysisReport.model_validate_json(response.text).model_dump()

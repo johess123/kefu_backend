@@ -9,6 +9,9 @@ from linebot.models import TextSendMessage
 
 from app.core.database import user_collection, agent_collection, session_collection
 from datetime import datetime
+from zoneinfo import ZoneInfo
+
+TAIPEI_TZ = ZoneInfo("Asia/Taipei")
 import time
 import random
 import string
@@ -40,7 +43,7 @@ async def call_human_support(tool_context: ToolContext, query: str) -> dict:
         # 1. 更新 Session Mode (改為更新 session 而非 user)
         await session_collection.update_one(
             {"session_id": session_id},
-            {"$set": {"mode": "human", "updated_at": datetime.now()}}
+            {"$set": {"mode": "human", "updated_at": datetime.now(TAIPEI_TZ)}}
         )
         
         # 2. 獲取 Agent 與部署資訊 (為了拿 admin_id 和 access_token)
@@ -59,7 +62,7 @@ async def call_human_support(tool_context: ToolContext, query: str) -> dict:
             user_name = user.get("name", user_id) if user else user_id
             
             notify_code = get_notify_code()
-            notify_text = f"🔔 [真人客服通知]\n使用者：{user_name}\n時間：{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n訊息代碼：{notify_code}\n使用者訊息：{query}"
+            notify_text = f"🔔 [真人客服通知]\n使用者：{user_name}\n時間：{datetime.now(TAIPEI_TZ).strftime('%Y-%m-%d %H:%M:%S')}\n訊息代碼：{notify_code}\n使用者訊息：{query}"
             
             line_api.push_message(admin_id, TextSendMessage(text=notify_text))
             return {"text": "已轉接真人客服"}

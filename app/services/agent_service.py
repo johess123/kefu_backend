@@ -22,7 +22,10 @@ from app.prompts.templates import (
     HANDOFF_DISABLED_INSTRUCTION
 )
 from datetime import datetime, timedelta, time
+from zoneinfo import ZoneInfo
 import re
+
+TAIPEI_TZ = ZoneInfo("Asia/Taipei")
 
 # 1. 初始化全域服務 (使用 MongoDB)
 session_service = MongodbSessionService(
@@ -179,7 +182,7 @@ async def initialize_agent_system(config: dict, admin_line_user_id: str, agent_i
                 "$set": {
                     "config": user_config_data,
                     "used_subagent": used_subagent,
-                    "updated_at": datetime.now()
+                    "updated_at": datetime.now(TAIPEI_TZ)
                 }
             }
         )
@@ -192,8 +195,8 @@ async def initialize_agent_system(config: dict, admin_line_user_id: str, agent_i
             "name": config.get('merchant_name', '未命名 Agent'),
             "config": user_config_data,
             "used_subagent": used_subagent,
-            "created_at": datetime.now(),
-            "updated_at": datetime.now()
+            "created_at": datetime.now(TAIPEI_TZ),
+            "updated_at": datetime.now(TAIPEI_TZ)
         })
         agent_id = str(result.inserted_id)
     
@@ -229,10 +232,10 @@ async def run_chat(
         {
             "$set": {
                 "name": user_name or target_user_id,
-                "login_at": datetime.now()
+                "login_at": datetime.now(TAIPEI_TZ)
             },
             "$setOnInsert": {
-                "created_at": datetime.now()
+                "created_at": datetime.now(TAIPEI_TZ)
             }
         },
         upsert=True
@@ -297,10 +300,10 @@ async def run_chat(
                         "user_id": target_user_id,
                         "agent_id": agent_id,
                         "mode": "ai",
-                        "updated_at": datetime.now()
+                        "updated_at": datetime.now(TAIPEI_TZ)
                     },
                     "$setOnInsert": {
-                        "created_at": datetime.now()
+                        "created_at": datetime.now(TAIPEI_TZ)
                     }
                 },
                 upsert=True
@@ -314,7 +317,7 @@ async def run_chat(
             "session_id": target_session_id,
             "content": user_message,
             "sender": "user",
-            "created_at": datetime.now(),
+            "created_at": datetime.now(TAIPEI_TZ),
             "subagent_usage": []
         })
         user_chat_id = str(user_chat_res.inserted_id)
@@ -407,7 +410,7 @@ async def run_chat(
             "session_id": target_session_id,
             "content": final_response_text,
             "sender": "ai",
-            "created_at": datetime.now(),
+            "created_at": datetime.now(TAIPEI_TZ),
             "subagent_usage": used_subagent_ids
         })
         ai_chat_id = str(ai_chat_res.inserted_id)
@@ -423,7 +426,7 @@ async def run_chat(
                 "model": settings.AGENT_MODEL,
                 "usage_type": "聊天",
                 "usage": usage,
-                "created_at": datetime.now()
+                "created_at": datetime.now(TAIPEI_TZ)
             })
 
         return {
@@ -500,7 +503,7 @@ async def update_agent_handoff(agent_id: str, admin_id: str, handoff_triggers: L
 
 async def get_agent_token_stats(agent_id: str, admin_id: str):
     """取得 Agent 的 Token 使用統計、近期紀錄與營運指標"""
-    now = datetime.now()
+    now = datetime.now(TAIPEI_TZ)
     today_start = datetime.combine(now.date(), time.min)
     first_day_of_month = datetime(now.year, now.month, 1)
     

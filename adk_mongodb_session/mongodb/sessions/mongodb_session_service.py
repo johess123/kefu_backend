@@ -1,6 +1,9 @@
 import copy
 import pickle
 from datetime import datetime
+from zoneinfo import ZoneInfo
+
+TAIPEI_TZ = ZoneInfo("Asia/Taipei")
 from typing import Any, Optional
 
 from google.adk.events.event import Event
@@ -87,7 +90,7 @@ class MongodbSessionService(BaseSessionService):
             app_name=app_name, user_id=user_id, id=session_id
         )
 
-        now = datetime.now()
+        now = datetime.now(TAIPEI_TZ)
         session_doc = {
             "_id": new_session.id,
             "app_name": app_name,
@@ -290,7 +293,7 @@ class MongodbSessionService(BaseSessionService):
                 {"_id": session.id}, {"$set": {"state": session_state}}
             )
 
-        now = datetime.now()
+        now = datetime.now(TAIPEI_TZ)
         event_doc = {
             "_id": event.id,
             "app_name": session.app_name,

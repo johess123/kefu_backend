@@ -6,6 +6,9 @@ import random
 import string
 from bson import ObjectId
 from datetime import datetime
+from zoneinfo import ZoneInfo
+
+TAIPEI_TZ = ZoneInfo("Asia/Taipei")
 
 from fastapi import Request, Header, HTTPException
 
@@ -47,7 +50,7 @@ async def switch_mode(sid: str, new_mode: str, source="manual"):
     display_mode = "【真人客服】" if new_mode == "human" else "【AI客服】"
     await session_collection.update_one(
         {"session_id": sid},
-        {"$set": {"mode": new_mode, "updated_at": datetime.now()}}
+        {"$set": {"mode": new_mode, "updated_at": datetime.now(TAIPEI_TZ)}}
     )
     return f"已手動切換為 {display_mode} 模式。"
 
@@ -78,7 +81,7 @@ async def deploy_line(data: DeployLineRequest):
                 "$set": {
                     "deploy_type": "line",
                     "deploy_config": deploy_config,
-                    "updated_at": datetime.now()
+                    "updated_at": datetime.now(TAIPEI_TZ)
                 }
             }
         )
@@ -164,7 +167,7 @@ async def line_webhook(channel_id: str, request: Request, x_line_signature: str 
                     # 直接轉發給 Admin
                     if admin_id:
                         notify_code = get_notify_code()
-                        notify_text = f"🔔 [真人客服通知]\n使用者：{user_name}\n時間：{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n訊息代碼：{notify_code}\n使用者訊息：{user_msg}"
+                        notify_text = f"🔔 [真人客服通知]\n使用者：{user_name}\n時間：{datetime.now(TAIPEI_TZ).strftime('%Y-%m-%d %H:%M:%S')}\n訊息代碼：{notify_code}\n使用者訊息：{user_msg}"
                         line_bot_api.push_message(admin_id, TextSendMessage(text=notify_text))
                 else:
                     # 2. 顯示 Loading 效果

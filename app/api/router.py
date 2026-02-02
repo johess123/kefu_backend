@@ -4,6 +4,9 @@ from app.controllers import merchant_controller, chat_controller, line_controlle
 from typing import Dict, Any
 from app.core.database import admin_collection
 from datetime import datetime
+from zoneinfo import ZoneInfo
+
+TAIPEI_TZ = ZoneInfo("Asia/Taipei")
 from app.services import agent_service
 
 api_router = APIRouter()
@@ -31,10 +34,10 @@ async def login_api(data: LoginData):
             {
                 "$set": {
                     "name": data.name or data.userId,
-                    "login_at": datetime.now()
+                    "login_at": datetime.now(TAIPEI_TZ)
                 # },
                 # "$setOnInsert": {
-                #     "created_at": datetime.now()
+                #     "created_at": datetime.now(TAIPEI_TZ)
                 }
             }
             # },
