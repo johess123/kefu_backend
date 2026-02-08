@@ -140,6 +140,16 @@ async def update_agent_config(agent_id: str, data: Dict[str, Any]):
     success = await agent_service.update_agent_config(agent_id, admin_id, updates)
     return {"status": "ok" if success else "error"}
 
+@api_router.post("/admin/agent/{agent_id}/toggle_subagent")
+async def toggle_subagent(agent_id: str, data: Dict[str, Any]):
+    admin_id = data.get("userId")
+    subagent_id = data.get("subagent_id")
+    enable = data.get("enable")
+    if not admin_id or not subagent_id or enable is None:
+        return {"error": "userId, subagent_id and enable are required"}
+    success = await agent_service.toggle_subagent_enable(agent_id, admin_id, subagent_id, enable)
+    return {"status": "ok" if success else "error"}
+
 @api_router.post("/line-webhook/{channel_id}")
 async def line_webhook(channel_id: str, request: Request, x_line_signature: str = Header(None)):
     return await line_controller.line_webhook(channel_id, request, x_line_signature)

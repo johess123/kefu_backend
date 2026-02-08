@@ -41,61 +41,64 @@ HANDOFF_DISABLED_INSTRUCTION = """# Instruction
 - 當你收到使用者問題，直接回覆以下 dict:
 {"hand_off": False, "reason": "不提供轉接真人客服服務"}"""
 
-FAQ_GENERATION_PROMPT = """ # Instruction
-- 你是一位專業的行銷與客服顧問。
-- 你會拿到商家提供的資訊（名稱、服務、網站內容）
-- 你的任務是依此資訊擬定 5 組高品質的常見問題（FAQ）。
+FAQ_GENERATION_PROMPT = """ # Task
+- Generate 5 to 7 common customer service Q&A pairs (FAQs) for a business described as: {merchant_info}.
 
-# Constraint
-- 問題(Q)必須是顧客真的會問的。
-- 回答(A)必須語氣親切、資訊正確，且符合商家提供的服務範圍。
-- 輸出格式必須是 JSON 格式，包含一個 list，每個項目有 q 和 a 兩個欄位。
+Instructions:
+1. Infer potential customer questions based solely on the brand description.
+2. The tone should be polite and helpful.
+3. The output must be in Traditional Chinese (Taiwan).
+4. RETURN STRICTLY JSON in the specified array format.
+"""
 
+FAQ_GENERATION_WITH_URL_PROMPT = """# Task
+- Create a list of 5 to 7 customer service FAQs.
 # Input
-- 商家名稱與服務：{merchant_info}
-- 網站內容：{website_text}
+- Target Website: {website_text}
+- Business Description: {merchant_info}
+
+# Instructions
+1. Look for specific details in the Target Website like shipping policies, pricing, business hours, return policies, or service menus.
+2. Generate Q&A pairs based on the ACTUAL information found on the website. 
+3. If the website information is insufficient, use the **Business Description** to infer reasonable questions.
+4. The tone should be polite and helpful.
+5. The output must be in Traditional Chinese (Taiwan).
+6. RETURN STRICTLY JSON in the specified array format.
 """
 
 FAQ_OPTIMIZE_PROMPT = """# Instruction
-- 你是一位專業的客服顧問。
-- 你會拿到一個常見問題（Q）與其回覆內容（A）。
-- 你的任務是優化這組 Q&A，讓問題更清晰、描述更精準，且回覆更具專業感與親和力。
-- 請直接回覆優化後的 JSON 結果。
+- You are a professional customer service copywriter (Traditional Chinese, Taiwan).
+- Please rewrite the following FAQ pair to make it clearer, more polite, and professional.
 
 # Input
 - Q: {question}
 - A: {answer}
+
+# Requirements
+1. Ensure the Question sounds like a natural customer query.
+2. Ensure the Answer addresses the question directly, politely, and helpfully.
+3. Maintain the original meaning.
+4. The output must be in Traditional Chinese (Taiwan).
+5. Return strictly JSON.
 """
 
 FAQ_ANALYSIS_PROMPT = """# Instruction
-- 你是一位專業的 AI 客服健檢顧問。
-- 你會拿到商家的品牌描述以及他們目前擬定的 FAQ 清單。
-- 你的任務是針對這份 FAQ 清單進行「智慧健檢」：
-  1. 給出整體的健檢得分 (0-100)。
-  2. 撰寫一段整體的建議報告 (report)。
-  3. 針對每一組 FAQ，如果可以更好，請提供具體的建議 (suggestion) 以及優化後的版本 (optimized_q, optimized_a)。
+- You are an expert content auditor for customer service knowledge bases (Traditional Chinese).
+- Analyze the following list of FAQs provided by a user.
+- FAQs: {faqs_json}
+- Your task is to identify specific improvements for individual fields (Question or Answer).
 
-# 評分標準：
-- 專業度：回答是否口語化、是否能代表品牌形象。
-- 資訊量：回答是否解決了潛在顧客的疑慮。
-- 關鍵字精確度：問題是否容易被搜尋到。
-- 完整性：是否涵蓋了品牌描述中的核心服務。
+# Criteria:
+- DUPLICATE: If two questions are too similar, suggest rephrasing one to be distinct, or mark it.
+- UNCLEAR: If a question is vague (e.g., "How much?"), rewrite it to be specific (e.g., "How much does the basic plan cost?").
+- IMPROVEMENT: If text is too long, rude, or grammatically incorrect, provide a polished version.
 
-# Output Format (JSON):
-{{
-  "score": 85,
-  "report": "整體內容完整且服務導向清晰，但在標題專業度、配送關鍵字精確度以及內文繁簡體一致性上仍有改進空間。建議將口語化的問題調整為標準化的知識庫標題，以提升檢索效率。",
-  "suggestions": [
-    {{
-      "id": "faq_id_1",
-      "suggestion": "建議將口語化的詢問改為結構化的功能性標題，方便用戶快速辨識內容主題。",
-      "optimized_q": "如何辦理退貨與鑑賞期規範說明",
-      "optimized_a": "沒問題！我們提供 30 天鑑賞期。只要商品保持全新未拆封，皆可申請退貨。請聯繫客服為您安排。"
-    }}
-  ]
-}}
+# IMPORTANT: 
+- For every issue found, you MUST provide 'suggestedText' which is the ready-to-use replacement.
+- Specify exactly which 'field' ('question' or 'answer') needs the change.
 
-# Input:
-- 品牌描述: {brand_description}
-- FAQ 清單: {faqs_json}
+# Language
+- Traditional Chinese (Taiwan)
+
+Return JSON strictly matching the schema.
 """

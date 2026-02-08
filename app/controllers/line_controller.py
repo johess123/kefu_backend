@@ -88,11 +88,11 @@ async def deploy_line(data: DeployLineRequest):
         
         line_bot_api.set_webhook_endpoint(webhook_url)
 
-        # 3. 如果有設定轉接邏輯，上傳 Rich Menu
-        agent = await agent_collection.find_one({"_id": ObjectId(data.agent_id)})
-        if agent and agent.get("config", {}).get("enable_handoff"):
-            line_richmenu_service.upload_and_set_default_richmenu(data.access_token)
-            print(f"Agent {data.agent_id} Rich Menu 上傳完成")
+        # # 3. 如果有設定轉接邏輯，上傳 Rich Menu (暫時關閉)
+        # agent = await agent_collection.find_one({"_id": ObjectId(data.agent_id)})
+        # if agent and agent.get("config", {}).get("enable_handoff"):
+        #     line_richmenu_service.upload_and_set_default_richmenu(data.access_token)
+        #     print(f"Agent {data.agent_id} Rich Menu 上傳完成")
         
         return {
             "status": "ok",

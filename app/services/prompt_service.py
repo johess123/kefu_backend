@@ -4,7 +4,7 @@ from google import genai
 from google.genai import types
 from app.core.config import settings
 from app.models.schemas import MerchantExtraction, GeneratedFAQs, FAQPair, FAQAnalysisReport
-from app.prompts.templates import EXTRACTION_PROMPT, FAQ_GENERATION_PROMPT, FAQ_OPTIMIZE_PROMPT, FAQ_ANALYSIS_PROMPT
+from app.prompts.templates import EXTRACTION_PROMPT, FAQ_GENERATION_PROMPT, FAQ_GENERATION_WITH_URL_PROMPT, FAQ_OPTIMIZE_PROMPT, FAQ_ANALYSIS_PROMPT
 from app.core.database import used_token_collection
 from datetime import datetime
 from zoneinfo import ZoneInfo
@@ -77,7 +77,9 @@ async def generate_structure_data(form_data: dict) -> dict:
                 "thought_token": thought_token,
                 "total_token": input_token + output_token + thought_token
             },
-            "created_at": datetime.now(TAIPEI_TZ)
+            "created_at": datetime.now(TAIPEI_TZ),
+            "input": user_summary,
+            "output": response.text
         })
         return {
             "config_id": config_id,
@@ -105,7 +107,7 @@ async def generate_faqs(brand_description: str, website_url: str, line_user_id: 
             print("website_url", website_url)
             website_response = await client.aio.models.generate_content(
                 model=settings.GENERAL_MODEL,
-                contents=[types.Part(text=f"完整提取並回傳這個網址的所有原始內容文字：{website_url}")],
+                contents=[types.Part(text=f"完整提取並回傳這個 url 的所有原始內容文字: {website_url}")],
                 config=types.GenerateContentConfig(
                     tools=[types.Tool(url_context={})],
                     temperature=0.1,
@@ -136,13 +138,19 @@ async def generate_faqs(brand_description: str, website_url: str, line_user_id: 
                     "thought_token": w_thought,
                     "total_token": w_input + w_output + w_tool + w_thought
                 },
-                "created_at": datetime.now(TAIPEI_TZ)
+                "created_at": datetime.now(TAIPEI_TZ),
+                "input": f"完整提取並回傳這個 url 的所有原始內容文字: URL: {website_url}",
+                "output": website_response.text
             })
 
-        prompt = FAQ_GENERATION_PROMPT.format(
-            merchant_info=brand_description,
-            website_text=website_text
-        )
+            prompt = FAQ_GENERATION_WITH_URL_PROMPT.format(
+                merchant_info=brand_description,
+                website_text=website_text
+            )
+        else:
+            prompt = FAQ_GENERATION_PROMPT.format(
+                merchant_info=brand_description
+            )
         
         response = await client.aio.models.generate_content(
             model=settings.GENERAL_MODEL,
@@ -175,7 +183,9 @@ async def generate_faqs(brand_description: str, website_url: str, line_user_id: 
                 "thought_token": f_thought,
                 "total_token": f_input + f_output + f_tool + f_thought
             },
-            "created_at": datetime.now(TAIPEI_TZ)
+            "created_at": datetime.now(TAIPEI_TZ),
+            "input": prompt,
+            "output": response.text
         })
 
         return GeneratedFAQs.model_validate_json(response.text).model_dump()
@@ -221,13 +231,16 @@ async def optimize_faq(question: str, answer: str, line_user_id: Optional[str] =
                 "thought_token": u_thought,
                 "total_token": u_input + u_output + u_tool + u_thought
             },
-            "created_at": datetime.now(TAIPEI_TZ)
+            "created_at": datetime.now(TAIPEI_TZ),
+            "input": prompt,
+            "output": response.text
         })
 
         return FAQPair.model_validate_json(response.text).model_dump()
     except Exception as e:
         print(f"FAQ 優化失敗: {e}")
         return {"error": str(e)}
+
 async def analyze_faqs(brand_description: str, faqs: list, line_user_id: Optional[str] = None) -> dict:
     try:
         import json
@@ -269,7 +282,9 @@ async def analyze_faqs(brand_description: str, faqs: list, line_user_id: Optiona
                 "thought_token": a_thought,
                 "total_token": a_input + a_output + a_tool + a_thought
             },
-            "created_at": datetime.now(TAIPEI_TZ)
+            "created_at": datetime.now(TAIPEI_TZ),
+            "input": prompt,
+            "output": response.text
         })
         
         return FAQAnalysisReport.model_validate_json(response.text).model_dump()

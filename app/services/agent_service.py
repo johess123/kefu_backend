@@ -58,13 +58,21 @@ async def get_agent_by_id(agent_id: str) -> Optional[Dict[str, Any]]:
             doc["_id"] = str(doc["_id"])
             
             # 取得使用的 subagent 詳情
-            used_ids = doc.get("used_subagent", [])
+            used_list = doc.get("used_subagent", [])
             details = []
-            if used_ids:
-                object_ids = [ObjectId(id_str) for id_str in used_ids if id_str]
+            if used_list:
+                # used_list 是 [{ "id": "...", "enable": bool }, ...]
+                id_to_status = {item["id"]: item["enable"] for item in used_list if isinstance(item, dict)}
+                # 兼容舊格式 [id1, id2, ...]
+                if not id_to_status and used_list and isinstance(used_list[0], str):
+                    id_to_status = {id_str: True for id_str in used_list}
+                
+                object_ids = [ObjectId(id_str) for id_str in id_to_status.keys() if id_str]
                 cursor = subagent_collection.find({"_id": {"$in": object_ids}})
                 async for sa in cursor:
-                    sa["_id"] = str(sa["_id"])
+                    sa_id = str(sa["_id"])
+                    sa["_id"] = sa_id
+                    sa["enable"] = id_to_status.get(sa_id, True)
                     details.append(sa)
             doc["used_subagent_details"] = details
             
@@ -104,8 +112,29 @@ async def initialize_agent_system(config: dict, admin_line_user_id: str, agent_i
 
     # 準備路由指令
     handoff_logic = str(config.get("handoff_logic", "")).strip()
+    # 獲取 Subagent 資訊以檢查手動開關
+    subagents_cursor = subagent_collection.find({})
+    subagent_map = {}
+    async for sa in subagents_cursor:
+        subagent_map[sa["name"]] = str(sa["_id"])
     
-    if handoff_logic:
+    em_id = subagent_map.get("Escalation Manager")
+    
+    # 檢查 Escalation Manager 是否被手動關閉 (從現有的 agent 資料中讀取)
+    em_enabled = True
+    if agent_id:
+        current_agent = await agent_collection.find_one({"_id": ObjectId(agent_id)})
+        if current_agent:
+            current_used = current_agent.get("used_subagent", [])
+            for item in current_used:
+                if isinstance(item, dict) and item.get("id") == em_id:
+                    em_enabled = item.get("enable", True)
+                    break
+                elif isinstance(item, str) and item == em_id:
+                    em_enabled = True
+                    break
+
+    if handoff_logic and em_enabled:
         handoff_section = f"""- 如果問題涉及"{handoff_logic}"，呼叫 handoff_expert 工具處理。"""
         enable_handoff = True
         handoff_text = HANDOFF_INSTRUCTION_HEADER
@@ -148,28 +177,38 @@ async def initialize_agent_system(config: dict, admin_line_user_id: str, agent_i
 ```
 """
 
-    # 管理使用的 subagents (從資料庫動態獲取 ID)
-    subagents_cursor = subagent_collection.find({})
-    subagent_map = {}
-    async for sa in subagents_cursor:
-        subagent_map[sa["name"]] = str(sa["_id"])
+    # 管理使用的 subagents
+    # 如果已經存在，我們應該保留現有的 enable 狀態，只更新 id 清單
+    existing_used = []
+    if agent_id:
+        current_agent = await agent_collection.find_one({"_id": ObjectId(agent_id)})
+        if current_agent:
+            existing_used = current_agent.get("used_subagent", [])
     
+    existing_status = {}
+    for item in existing_used:
+        if isinstance(item, dict):
+            existing_status[item["id"]] = item["enable"]
+        elif isinstance(item, str):
+            existing_status[item] = True
+            
     used_subagent = []
-    # Knowledge Base (客服專員) 永遠啟用
+    # Knowledge Base (客服專員) 永遠啟用 (除非未來有需求)
     kb_id = subagent_map.get("Knowledge Base")
     if kb_id:
-        used_subagent.append(kb_id)
+        used_subagent.append({"id": kb_id, "enable": existing_status.get(kb_id, True)})
     
-    # Escalation Manager (協作專員) 根據是否有轉接人工規則啟用
-    if enable_handoff:
+    # Escalation Manager (協作專員) 根據是否有轉接人工規則決定是否在清單中
+    # 但它的 enable 狀態受手動開關與邏輯是否存在共同影響
+    if handoff_logic:
         em_id = subagent_map.get("Escalation Manager")
         if em_id:
-            used_subagent.append(em_id)
+            used_subagent.append({"id": em_id, "enable": existing_status.get(em_id, True)})
 
     user_config_data = {
         "router_instruction": router_prompt.strip(),
         "faq_instruction": faq_text.strip() + SUBAGENT_INSTRUCTION,
-        "handoff_instruction": handoff_text+"\n-"+handoff_logic+SUBAGENT_INSTRUCTION if handoff_logic else handoff_text,
+        "handoff_instruction": handoff_text+"\n-"+handoff_logic+SUBAGENT_INSTRUCTION if enable_handoff else handoff_text,
         "enable_handoff": enable_handoff,
         "raw_config": config
     }
@@ -426,7 +465,9 @@ async def run_chat(
                 "model": settings.AGENT_MODEL,
                 "usage_type": "聊天",
                 "usage": usage,
-                "created_at": datetime.now(TAIPEI_TZ)
+                "created_at": datetime.now(TAIPEI_TZ),
+                "input": user_message,
+                "output": response_text
             })
 
         return {
@@ -446,12 +487,16 @@ async def get_available_subagents(agent_id: str) -> List[Dict[str, Any]]:
     if not agent:
         return []
     
-    used_ids = agent.get("used_subagent", [])
-    # 轉換 ID 格式以便查詢
-    object_ids = [ObjectId(id_str) for id_str in used_ids if id_str]
+    used_list = agent.get("used_subagent", [])
+    used_ids = []
+    for item in used_list:
+        if isinstance(item, dict):
+            used_ids.append(ObjectId(item["id"]))
+        elif isinstance(item, str):
+            used_ids.append(ObjectId(item))
     
     available = []
-    cursor = subagent_collection.find({"_id": {"$nin": object_ids}})
+    cursor = subagent_collection.find({"_id": {"$nin": used_ids}})
     async for doc in cursor:
         doc["_id"] = str(doc["_id"])
         available.append(doc)
@@ -459,11 +504,57 @@ async def get_available_subagents(agent_id: str) -> List[Dict[str, Any]]:
 
 async def add_subagent_to_agent(agent_id: str, subagent_id: str):
     """將 subagent 加入 Agent 的使用清單"""
-    result = await agent_collection.update_one(
+    # 檢查是否已存在
+    agent = await agent_collection.find_one({"_id": ObjectId(agent_id)})
+    if not agent:
+        return False
+    
+    used = agent.get("used_subagent", [])
+    exists = any(item["id"] == subagent_id if isinstance(item, dict) else item == subagent_id for item in used)
+    
+    if not exists:
+        result = await agent_collection.update_one(
+            {"_id": ObjectId(agent_id)},
+            {"$addToSet": {"used_subagent": {"id": subagent_id, "enable": True}}}
+        )
+        return result.modified_count > 0
+    return True
+
+async def toggle_subagent_enable(agent_id: str, admin_id: str, subagent_id: str, enable: bool):
+    """切換 subagent 的啟用/停用狀態"""
+    agent = await agent_collection.find_one({"_id": ObjectId(agent_id), "admin_id": admin_id})
+    if not agent:
+        return False
+    
+    used = agent.get("used_subagent", [])
+    updated = False
+    new_used = []
+    for item in used:
+        if isinstance(item, dict):
+            if item["id"] == subagent_id:
+                item["enable"] = enable
+                updated = True
+            new_used.append(item)
+        elif isinstance(item, str):
+            if item == subagent_id:
+                new_used.append({"id": item, "enable": enable})
+                updated = True
+            else:
+                new_used.append({"id": item, "enable": True})
+
+    if not updated:
+        return False
+
+    # 更新到資料庫
+    await agent_collection.update_one(
         {"_id": ObjectId(agent_id)},
-        {"$addToSet": {"used_subagent": subagent_id}}
+        {"$set": {"used_subagent": new_used}}
     )
-    return result.modified_count > 0
+
+    # 重新初始化系統以更新 prompt
+    raw_config = agent.get("config", {}).get("raw_config", {})
+    await initialize_agent_system(raw_config, admin_id, agent_id)
+    return True
 
 async def update_agent_faqs(agent_id: str, admin_id: str, faqs: List[Dict[str, Any]]):
     """更新 Agent 的 FAQ 並重新初始化系統"""
