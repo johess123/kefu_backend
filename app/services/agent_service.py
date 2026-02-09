@@ -563,6 +563,20 @@ async def update_agent_faqs(agent_id: str, admin_id: str, faqs: List[Dict[str, A
         return False
     
     raw_config = agent.get("config", {}).get("raw_config", {})
+    
+    # 加入後端驗證
+    if not faqs:
+        return False
+    if len(faqs) > 20:
+        return False
+    for faq in faqs:
+        q = faq.get("question", "").strip()
+        a = faq.get("answer", "").strip()
+        if not q or not a:
+            return False
+        if len(q) > 50 or len(a) > 200:
+            return False
+
     raw_config["faqs"] = faqs
     
     await initialize_agent_system(raw_config, admin_id, agent_id)
@@ -576,6 +590,10 @@ async def update_agent_handoff(agent_id: str, admin_id: str, handoff_triggers: L
     
     raw_config = agent.get("config", {}).get("raw_config", {})
     
+    # 加入後端驗證
+    if handoff_custom and len(handoff_custom) > 50:
+        return False
+        
     # 組合轉接邏輯文字
     all_triggers = []
     if handoff_triggers:
@@ -670,14 +688,18 @@ async def update_agent_config(agent_id: str, admin_id: str, updates: Dict[str, A
     
     # 更新欄位
     if "merchant_name" in updates:
+        if len(updates["merchant_name"]) > 20: return False # 加個暱稱限制
         raw_config["merchant_name"] = updates["merchant_name"]
     if "services" in updates:
+        if len(updates["services"]) > 200: return False
         raw_config["services"] = updates["services"]
     if "website_url" in updates:
+        if updates["website_url"] and len(updates["website_url"]) > 100: return False
         raw_config["website_url"] = updates["website_url"]
     if "tone" in updates:
         raw_config["tone"] = updates["tone"]
     if "tone_avoid" in updates:
+        if updates["tone_avoid"] and len(updates["tone_avoid"]) > 50: return False
         raw_config["tone_avoid"] = updates["tone_avoid"]
     
     # 同步更新 agent table 的 name

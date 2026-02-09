@@ -150,7 +150,7 @@ async def line_webhook(channel_id: str, request: Request, x_line_signature: str 
                     print(f"Error parsing postback: {e}")
 
             elif isinstance(event, MessageEvent) and isinstance(event.message, TextMessage):
-                user_msg = event.message.text
+                user_msg = event.message.text[:100] if event.message.text else ""
                 
                 # 獲取使用者名稱
                 try:
