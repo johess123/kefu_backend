@@ -82,7 +82,10 @@ FAQ_OPTIMIZE_PROMPT = """# Instruction
 5. Return strictly JSON.
 """
 
-FAQ_ANALYSIS_PROMPT = """# Instruction
+FAQ_ANALYSIS_PROMPT = """# Language
+- Traditional Chinese (Taiwan)
+
+# Instruction
 - You are an expert content auditor for customer service knowledge bases (Traditional Chinese).
 - Analyze the following list of FAQs provided by a user.
 - FAQs: {faqs_json}
@@ -96,9 +99,6 @@ FAQ_ANALYSIS_PROMPT = """# Instruction
 # IMPORTANT: 
 - For every issue found, you MUST provide 'suggestedText' which is the ready-to-use replacement.
 - Specify exactly which 'field' ('question' or 'answer') needs the change.
-
-# Language
-- Traditional Chinese (Taiwan)
 
 Return JSON strictly matching the schema.
 """

@@ -19,21 +19,21 @@ async def init_session():
 async def login_api(data: LoginData):
     print(f"Login API Request received for userId: {data.userId}")
     
-    # 檢查 admin_collection 中是否有 line_id = data.userId 的
-    admin = await admin_collection.find_one({"line_id": data.userId})
+    # 檢查 admin_collection 中是否有 name = data.userId 的
+    admin = await admin_collection.find_one({"name": data.name})
     
     if not admin:
-        print(f"Login failed: user {data.userId} is not an admin")
+        print(f"Login failed: user {data.name} is not an admin")
         return {"isAdmin": False}
 
     try:
         ## 記錄或
         # 更新管理者資訊
         result = await admin_collection.update_one(
-            {"line_id": data.userId},
+            {"name": data.name},
             {
                 "$set": {
-                    "name": data.name or data.userId,
+                    "line_id": data.userId,
                     "login_at": datetime.now(TAIPEI_TZ)
                 # },
                 # "$setOnInsert": {
