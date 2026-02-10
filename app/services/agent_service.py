@@ -12,7 +12,7 @@ import logging
 from bson import ObjectId
 
 from app.core.config import settings
-from app.core.database import agent_collection, user_collection, session_collection, chat_collection, used_token_collection, subagent_collection
+from app.core.database import agent_collection, user_collection, session_collection, chat_collection, used_token_collection, subagent_collection, daily_usage_collection
 from app.models.schemas import ChatStructuredOutput
 from app.agents.bot_agents import main_agent
 from app.prompts.templates import (
@@ -23,6 +23,7 @@ from app.prompts.templates import (
 )
 from datetime import datetime, timedelta, time
 from zoneinfo import ZoneInfo
+from app.services.usage_service import check_usage_limit, record_usage
 import re
 
 TAIPEI_TZ = ZoneInfo("Asia/Taipei")
@@ -305,7 +306,19 @@ async def run_chat(
         
         # 獲取 Agent 配置
         agent = await agent_collection.find_one({"_id": ObjectId(agent_id)})
-        if not agent or "config" not in agent:
+        if not agent:
+             return {"response_text": "找不到對應的 Agent 設定，請商家確認設定流程。", "related_faq_list": [], "handoff_result": {"hand_off": False, "reason": "Agent not found"}}
+        
+        # 檢查管理員的使用限制
+        admin_id = agent.get("admin_id")
+        if not await check_usage_limit(admin_id):
+            return {
+                "response_text": "抱歉，該商家的今日 AI 使用額度已達上限 (100次)，請明天再試或聯繫商家。",
+                "related_faq_list": [],
+                "handoff_result": {"hand_off": False, "reason": "Monthly limit reached"}
+            }
+
+        if "config" not in agent:
             return {"response_text": "找不到對應的 Agent 設定，請商家確認設定流程。", "related_faq_list": [], "handoff_result": {"hand_off": False, "reason": "Agent Config not found"}}
         
         base_state = agent["config"].copy()
@@ -469,6 +482,9 @@ async def run_chat(
                 "input": user_message,
                 "output": response_text
             })
+        
+        # 記錄使用量 (token 消耗可能有多筆, 但只算使用一次)
+        await record_usage(agent.get("admin_id"))
 
         return {
             "response_text": final_response_text,
@@ -652,7 +668,7 @@ async def get_agent_token_stats(agent_id: str, admin_id: str):
     async for result in stats_cursor:
         input_tokens = result.get("total_input", 0)
         output_tokens = result.get("total_output", 0)
-    
+
     # 最近 10 筆紀錄
     history = []
     cursor = used_token_collection.find({"agent_id": agent_id}).sort("created_at", -1).limit(10)
@@ -664,15 +680,23 @@ async def get_agent_token_stats(agent_id: str, admin_id: str):
             "change": -(doc["usage"]["total_token"] // 100), # 假設消耗點數 = total_token / 100
             "balance": 1250 # Placeholder, 實際應從帳戶餘額扣除
         })
-    
+
+    today_usage_count = 0
+    today_str = now.strftime("%Y-%m-%d")
+    usage_doc = await daily_usage_collection.find_one({"admin_id": admin_id, "date": today_str})
+    if usage_doc:
+        today_usage_count = usage_doc.get("usage", 0)
+
     return {
         "monthly_usage": {
-            "points": abs(sum(h["change"] for h in history if h["change"] < 0)), # Placeholder
+            "points": abs(sum(h["change"] for h in history if h["change"] < 0)) if history else 0,
             "input_tokens": input_tokens,
             "output_tokens": output_tokens
         },
         "daily_stats": {
             "today_chats": today_chats,
+            "today_usage_count": today_usage_count,
+            "usage_limit": 100,
             "health_score": 100 # 目前預設為 100，未來可根據錯誤率計算
         },
         "history": history

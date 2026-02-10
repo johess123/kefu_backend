@@ -91,9 +91,7 @@ FAQ_OPTIMIZE_PROMPT = """# Instruction
 6. Return strictly JSON.
 """
 
-FAQ_ANALYSIS_PROMPT = """
-
-# Instruction
+FAQ_ANALYSIS_PROMPT = """# Instruction
 - 你是一位專業的客服知識庫內容審核專家。
 - 分析使用者提供的 FAQ 列表。
 - FAQs: {faqs_json}
@@ -105,12 +103,12 @@ FAQ_ANALYSIS_PROMPT = """
 - IMPROVEMENT (改進): 如果文字過長、語氣不禮貌或語法錯誤，提供已優化的版本。
 - CHARACTER LIMIT (字數限制): 每個 Question 必須為 20 到 40 個中文字；每個 Answer 必須為 100 到 150 個中文字。
 
-# Important
+# Constraint
 - 每個問題或答案的改進，都必須提供建議內容作為可直接使用的替代文字。
 - 明確標註需修改的欄位 ('question' 或 'answer')。
 - 嚴格控制字數範圍，不可超出或低於規定。
 - 嚴格以符合 schema 的 JSON 格式輸出。
 
 # Language
-- 繁體中文
+- 以繁體中文產生回覆
 """

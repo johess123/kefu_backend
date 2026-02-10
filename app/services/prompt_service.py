@@ -6,6 +6,7 @@ from app.core.config import settings
 from app.models.schemas import MerchantExtraction, GeneratedFAQs, FAQPair, FAQAnalysisReport
 from app.prompts.templates import EXTRACTION_PROMPT, FAQ_GENERATION_PROMPT, FAQ_GENERATION_WITH_URL_PROMPT, FAQ_OPTIMIZE_PROMPT, FAQ_ANALYSIS_PROMPT
 from app.core.database import used_token_collection
+from app.services.usage_service import check_usage_limit, record_usage
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
@@ -28,6 +29,10 @@ def build_user_summary(form_data: dict) -> str:
     """
 
 async def generate_structure_data(form_data: dict) -> dict:
+    admin_id = form_data.get("line_user_id")
+    if not await check_usage_limit(admin_id):
+        return {"error": "已達到今日使用上限 (100次)，請明天再試。"}
+
     user_summary = build_user_summary(form_data)
     
     try:
@@ -81,6 +86,7 @@ async def generate_structure_data(form_data: dict) -> dict:
             "input": user_summary,
             "output": response.text
         })
+        await record_usage(form_data.get("line_user_id"))
         return {
             "config_id": config_id,
             "merchant_name": extraction.merchant_name,
@@ -101,6 +107,8 @@ def get_cached_logic(config_id: str) -> dict:
     return PENDING_CONFIG_CACHE.get(config_id)
 
 async def generate_faqs(brand_description: str, website_url: str, line_user_id: Optional[str] = None) -> dict:
+    if not await check_usage_limit(line_user_id):
+        return {"error": "已達到今日使用上限 (100次)，請明天再試。"}
     try:
         website_text = "未提供"
         if website_url:
@@ -142,6 +150,7 @@ async def generate_faqs(brand_description: str, website_url: str, line_user_id: 
                 "input": f"完整提取並回傳這個 url 的所有原始內容文字: URL: {website_url}",
                 "output": website_response.text
             })
+            await record_usage(line_user_id)
 
             prompt = FAQ_GENERATION_WITH_URL_PROMPT.format(
                 merchant_info=brand_description,
@@ -188,12 +197,15 @@ async def generate_faqs(brand_description: str, website_url: str, line_user_id: 
             "output": response.text
         })
 
+        await record_usage(line_user_id)
         return GeneratedFAQs.model_validate_json(response.text).model_dump()
     except Exception as e:
         print(f"FAQ 生成失敗: {e}")
         return {"error": str(e)}
 
 async def optimize_faq(question: str, answer: str, line_user_id: Optional[str] = None) -> dict:
+    if not await check_usage_limit(line_user_id):
+        return {"error": "已達到今日使用上限 (100次)，請明天再試。"}
     try:
         prompt = FAQ_OPTIMIZE_PROMPT.format(
             question=question,
@@ -235,6 +247,7 @@ async def optimize_faq(question: str, answer: str, line_user_id: Optional[str] =
             "input": prompt,
             "output": response.text
         })
+        await record_usage(line_user_id)
 
         return FAQPair.model_validate_json(response.text).model_dump()
     except Exception as e:
@@ -242,6 +255,8 @@ async def optimize_faq(question: str, answer: str, line_user_id: Optional[str] =
         return {"error": str(e)}
 
 async def analyze_faqs(brand_description: str, faqs: list, line_user_id: Optional[str] = None) -> dict:
+    if not await check_usage_limit(line_user_id):
+        return {"error": "已達到今日使用上限 (100次)，請明天再試。"}
     try:
         import json
         faqs_json = json.dumps([{"id": f["id"], "q": f["question"], "a": f["answer"]} for f in faqs], ensure_ascii=False)
@@ -286,6 +301,7 @@ async def analyze_faqs(brand_description: str, faqs: list, line_user_id: Optiona
             "input": prompt,
             "output": response.text
         })
+        await record_usage(line_user_id)
         
         return FAQAnalysisReport.model_validate_json(response.text).model_dump()
     except Exception as e:
