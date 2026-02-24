@@ -19,12 +19,13 @@ FAQ_INSTRUCTION_HEADER = """# Instruction
 - 你的任務是以 list[dict] 格式回傳所有與使用者問題相關的 FAQ 項目。
 - 若沒有與使用者問題相關的 FAQ，則回傳空的 list[]。
 
-# Example
-相關的 FAQ 項目: [{"id": abc123, "Q": ..., "A": ...}, ...]
+# Output
+[{"id": abc123, "Q": ..., "A": ...}, ...]
 
 # FAQ"""
 
-SUBAGENT_INSTRUCTION = """\n\n- 若問題超出能力範圍時回答"此 tool 無法回答該問題，改用別種 tool"。\n"""
+SUBAGENT_INSTRUCTION = """\n\n- 若問題超出能力範圍時回答:
+{"response":"此 tool 無法回答該問題，改用別種 tool"}\n"""
 
 HANDOFF_INSTRUCTION_HEADER = """# Instruction
 - 你是一個專業的轉接真人客服 agent。

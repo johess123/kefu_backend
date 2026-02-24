@@ -35,7 +35,7 @@ session_service = MongodbSessionService(
     collection_prefix=settings.MONGO_COLLECTION_PREFIX
 )
 
-# 3. 初始化 Runner
+# 2. 初始化 Runner
 def get_runner(app_name: str):
     return Runner(
         agent=main_agent,
@@ -86,8 +86,8 @@ async def clear_all_agent_sessions(agent_id: str):
     """刪除該 Agent 的所有使用者對話紀錄，強迫下次對話時重新讀取最新設定"""
     app_name = f"agent_{agent_id}"
     
-    # 從我們管理的 session_collection 找出所有使用該 agent_id 的 session
-    cursor = session_collection.find({"agent_id": agent_id})
+    # 從我們管理的 session_collection 找出所有使用該 agent_id 的 session (只找未刪除的)
+    cursor = session_collection.find({"agent_id": agent_id, "deleted_at": None})
     async for s in cursor:
         try:
             await session_service.delete_session(
@@ -98,8 +98,11 @@ async def clear_all_agent_sessions(agent_id: str):
         except Exception as e:
             print(f"刪除 ADK Session 失敗 (可能已不存在): {e}")
             
-    # 清除我們自己的紀錄
-    await session_collection.delete_many({"agent_id": agent_id})
+    # 清除我們自己的紀錄 (軟刪除)
+    await session_collection.update_many(
+        {"agent_id": agent_id, "deleted_at": None},
+        {"$set": {"deleted_at": datetime.now(TAIPEI_TZ)}}
+    )
     print(f"已清理 Agent {agent_id} 的所有舊 Session。")
 
 async def initialize_agent_system(config: dict, admin_line_user_id: str, agent_id: Optional[str] = None):
@@ -164,18 +167,16 @@ async def initialize_agent_system(config: dict, admin_line_user_id: str, agent_i
 # Constraint
 - 必須使用 faq_expert 工具判斷使用者問題是否涉及常見問題，並取得回覆。
 {handoff_section}
+- 如果使用者問題都不屬於以上情況，就呼叫 call_human_support 工具，並回覆「已轉交真人客服處理，會盡快回覆您！」。
+    - 除非是已有呼叫 handoff_expert，且 handoff_expert 回傳的 hand_off 為 true 的情況，才不需呼叫 call_human_support，避免重複轉接，否則一律都要呼叫 call_human_support。
+    - 若沒有要呼叫 call_human_support，則禁止在回覆中加入「已轉交真人客服處理，會盡快回覆您！」
 - 無論是否呼叫了任何工具，都必須產出回應，不能只呼叫工具而不生成回覆。
+- 檢查你的輸出，不要出現兩遍一樣的回應
 
 # Language
 - 使用繁體中文回答
 
-# Output
-- 以 JSON 格式回覆
 
-# Example
-```json
-{{"response_text": "你的回覆", "related_faq_list": [{{"id": "faq1", "Q": "問題1", "A": "回覆1"}}, ...], "handoff_result": {{"hand_off": false, "reason": "使用者問題不符合設定的轉接真人客服條件"}}}}
-```
 """
 
     # 管理使用的 subagents
@@ -249,7 +250,8 @@ async def run_chat(
     line_user_id: str,
     agent_id: Optional[str] = None,
     session_id: Optional[str] = None,
-    user_name: Optional[str] = None, # 新增
+    user_name: Optional[str] = None,
+    source: Optional[str] = None,
 ) -> dict:
     """
     執行對話
@@ -281,8 +283,11 @@ async def run_chat(
         upsert=True
     )
 
-    # 1. 檢查 Session Mode
-    session_doc = await session_collection.find_one({"session_id": target_session_id})
+    # 1. 檢查 Session Mode (只找未刪除的)
+    session_doc = await session_collection.find_one({
+        "session_id": target_session_id,
+        "deleted_at": None
+    })
     if session_doc and session_doc.get("mode") == "human":
         return {
             "response_text": "現在由專員為您服務中。", 
@@ -344,9 +349,9 @@ async def run_chat(
                 state=base_state
             )
             
-            # 記錄到我們管理的 session_collection
+            # 記錄到我們管理的 session_collection (只找未刪除的，若無則新增)
             await session_collection.update_one(
-                {"session_id": target_session_id},
+                {"session_id": target_session_id, "deleted_at": None},
                 {
                     "$set": {
                         "user_id": target_user_id,
@@ -355,7 +360,8 @@ async def run_chat(
                         "updated_at": datetime.now(TAIPEI_TZ)
                     },
                     "$setOnInsert": {
-                        "created_at": datetime.now(TAIPEI_TZ)
+                        "created_at": datetime.now(TAIPEI_TZ),
+                        "deleted_at": None
                     }
                 },
                 upsert=True
@@ -417,50 +423,59 @@ async def run_chat(
         print("-"*10)
         print("模型輸出:", response_text)
         print("-"*10)
-        
-        # 4. 結構化輸出
-        final_response_text = ""
-        related_faq_list = []
-        handoff_result = {"hand_off": False, "reason": "No Agent ID"}
-        
-        try:
-            # 尋找內容中的 JSON 區塊
-            # 優先找 ```json ... ```，其次找第一個 { 到最後一個 }
-            json_match = re.search(r"```json\s*(\{.*?\})\s*```", response_text, re.DOTALL)
-            if not json_match:
-                json_match = re.search(r"(\{.*\})", response_text, re.DOTALL)
-            
-            if json_match:
-                clean_json = json_match.group(1).strip()
-            else:
-                clean_json = response_text.strip()
-            
-            # 處理 Python 布林值首字母大寫的問題 (常見的模型錯誤)
-            clean_json = clean_json.replace(": True", ": true").replace(": False", ": false").replace(": None", ": null")
-            clean_json = clean_json.replace(":True", ":true").replace(":False", ":false").replace(":None", ":null")
-            
-            data_dict = json.loads(clean_json)
-            # 確保即使欄位不存在，也會有基本的預設值，避免前端出錯
-            final_response_text = data_dict.get('response_text', '')
-            related_faq_list = data_dict.get('related_faq_list', [])
-            handoff_result = data_dict.get('handoff_result', {"hand_off": False, "reason": "使用者問題不符合設定的轉接真人客服條件"})
-        except Exception as e:
-            print(f"解析輸出失敗: {e}, 原文: {response_text}")
-            # 如果解析失敗，嘗試把整段文字當作回覆內容送出 (降級處理)
-            final_response_text = response_text
-            handoff_result = {"hand_off": False, "reason": f"格式解析失敗但已保留原文"}
+
+        session = await session_service.get_session(
+            app_name=target_app_name, 
+            user_id=target_user_id, 
+            session_id=target_session_id
+        )
+        state = session.state
+        faq_result = state.get('faq_result', [])
+        handoff_result = state.get('handoff_result', {})
+
+        # 處理模型可能回傳 Python Style 的布林值 (如 True 而非 true)
+        if isinstance(faq_result, str) and faq_result.strip():
+            try:
+                clean_faq = faq_result.replace("```json", "").replace("```", "")
+                clean_faq = clean_faq.replace(": True", ": true").replace(": False", ": false").replace(": None", ": null")
+                clean_faq = clean_faq.replace(":True", ":true").replace(":False", ":false").replace(":None", ":null")
+                faq_result = json.loads(clean_faq)
+                print("FAQ 格式正確")
+            except:
+                print("FAQ 格式錯誤，使用空 list")
+                faq_result = []
+
+        if isinstance(handoff_result, str) and handoff_result.strip():
+            try:
+                clean_handoff = handoff_result.replace("```json", "").replace("```", "")
+                clean_handoff = clean_handoff.replace(": True", ": true").replace(": False", ": false").replace(": None", ": null")
+                clean_handoff = clean_handoff.replace(":True", ":true").replace(":False", ":false").replace(":None", ":null")
+                handoff_result = json.loads(clean_handoff)
+                print("handoff_result 格式正確")
+            except:
+                print("handoff_result 格式錯誤，使用空 dict")
+                handoff_result = {}
 
         # 判斷使用的 subagent
         used_subagent_ids = []
-        if related_faq_list and kb_id:
-            used_subagent_ids.append(kb_id)
-        if handoff_result.get("hand_off") and em_id:
-            used_subagent_ids.append(em_id)
+        if faq_result:
+            if kb_id:
+                used_subagent_ids.append(kb_id)
+            related_faq_list = faq_result
+        else:
+            related_faq_list = []
+
+        if isinstance(handoff_result, dict) and handoff_result.get("hand_off"):
+            if em_id:
+                used_subagent_ids.append(em_id)
+            handoff_result = handoff_result
+        else:
+            handoff_result = {"hand_off": False, "reason": "使用者問題不符合設定的轉接真人客服條件"}
 
         # 記錄 AI 回覆
         ai_chat_res = await chat_collection.insert_one({
             "session_id": target_session_id,
-            "content": final_response_text,
+            "content": response_text,
             "sender": "ai",
             "created_at": datetime.now(TAIPEI_TZ),
             "subagent_usage": used_subagent_ids
@@ -487,7 +502,7 @@ async def run_chat(
         await record_usage(agent.get("admin_id"))
 
         return {
-            "response_text": final_response_text,
+            "response_text": response_text,
             "related_faq_list": related_faq_list,
             "handoff_result": handoff_result
         }

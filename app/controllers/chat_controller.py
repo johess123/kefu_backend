@@ -11,6 +11,7 @@ async def chat(data: ChatRequest):
         line_user_id=data.line_user_id,
         user_name=data.user_name,
         agent_id=data.agent_id,
-        session_id=data.session_id
+        session_id=data.session_id,
+        source=data.source
     )
     return result

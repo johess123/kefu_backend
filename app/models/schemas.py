@@ -22,11 +22,11 @@ class FormData(BaseModel):
 
 class ChatRequest(BaseModel):
     message: str = Field(..., max_length=100)
-    history: List[dict] 
     line_user_id: str
     user_name: Optional[str] = None
     agent_id: Optional[str] = None
     session_id: Optional[str] = None
+    source: Optional[str] = None # 來源 (例如: test, line, etc.)
 
 class DeployLineRequest(BaseModel):
     agent_id: str
