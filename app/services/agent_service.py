@@ -164,19 +164,26 @@ async def initialize_agent_system(config: dict, admin_line_user_id: str, agent_i
 - 名稱：{config.get('merchant_name', '未命名')}
 - 服務：{config.get('services', '一般諮詢')}
     
+# 任務邏輯處理流程
+你必須嚴格遵守以下處理順序，不得跳過任何步驟：
+1. 初步判斷: 呼叫 faq_expert 查詢使用者問題。若有對應解答，直接回覆該內容，嚴禁提及真人客服。
+2. 轉接檢查: 
+    - 若 faq_expert 無法解決，執行轉接規則: {handoff_section}
+    - 檢查 handoff_expert 是否已處理:
+        - 若 hand_off 為 true: 代表已完成轉接，請直接產出回覆，但不可再次呼叫 call_human_support。
+3. 最終手段 (Default Case): 若以上皆非，必須同時執行以下兩個動作:
+    - Action:呼叫 call_human_support 工具。
+    - Response:回覆文字中必須包含「已轉交真人客服處理，會盡快回覆您！」。
+
 # Constraint
-- 必須使用 faq_expert 工具判斷使用者問題是否涉及常見問題，並取得回覆。
-{handoff_section}
-- 如果使用者問題都不屬於以上情況，就呼叫 call_human_support 工具，並回覆「已轉交真人客服處理，會盡快回覆您！」。
-    - 除非是已有呼叫 handoff_expert，且 handoff_expert 回傳的 hand_off 為 true 的情況，才不需呼叫 call_human_support，避免重複轉接，否則一律都要呼叫 call_human_support。
-    - 若沒有要呼叫 call_human_support，則禁止在回覆中加入「已轉交真人客服處理，會盡快回覆您！」
-- 無論是否呼叫了任何工具，都必須產出回應，不能只呼叫工具而不生成回覆。
-- 檢查你的輸出，不要出現兩遍一樣的回應
+- 聯動規則： call_human_support 工具的調用與「已轉交真人客服處理...」這句文字是強綁定關係。
+    - 禁止： 沒呼叫工具卻在回覆中出現該句子。
+    - 禁止： 呼叫了工具卻沒在回覆中出現該句子。
+- 排他規則： 若 faq_expert 已提供有效回覆，回覆中絕對禁止出現任何關於「真人客服」或「轉交」的字眼。
+- 輸出完整性： 嚴禁只呼叫工具而不產生文字回覆。無論執行哪個工具，最終都必須給予使用者友善的文字回應。
 
 # Language
 - 使用繁體中文回答
-
-
 """
 
     # 管理使用的 subagents
