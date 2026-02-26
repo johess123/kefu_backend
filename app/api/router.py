@@ -49,7 +49,7 @@ async def login_api(data: LoginData):
         import traceback
         traceback.print_exc()
     
-    return {"isAdmin": True}
+    return {"isAdmin": True, "isMonitor": bool(admin.get("is_monitor", False))}
 
 @api_router.post("/generate_faqs")
 async def generate_faqs(data: GenerateFAQRequest):

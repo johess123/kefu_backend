@@ -1,6 +1,6 @@
 from datetime import datetime, timedelta
 from typing import Optional
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Query, Depends, HTTPException
 from bson import ObjectId
 
 from app.core.database import (
@@ -16,6 +16,14 @@ from app.core.database import (
 )
 
 monitor_router = APIRouter()
+
+
+async def verify_monitor_access(userId: str = Query(...)):
+    admin = await admin_collection.find_one({"line_id": userId, "is_monitor": True})
+    if not admin:
+        raise HTTPException(status_code=403, detail="Monitor access denied")
+    return userId
+
 
 # Pricing (Per 1M tokens)
 PRICING = {
@@ -44,7 +52,8 @@ async def get_records(
     page: int = 1,
     limit: int = 20,
     usage_type: Optional[str] = Query(None),
-    admin_query: Optional[str] = Query(None)
+    admin_query: Optional[str] = Query(None),
+    _: str = Depends(verify_monitor_access)
 ):
     skip = (page - 1) * limit
 
@@ -165,7 +174,7 @@ async def get_records(
 
 
 @monitor_router.get("/stats")
-async def get_stats(days: int = Query(7), usage_type: Optional[str] = Query(None)):
+async def get_stats(days: int = Query(7), usage_type: Optional[str] = Query(None), _: str = Depends(verify_monitor_access)):
     end_date = datetime.now()
     start_date = end_date - timedelta(days=days)
 
@@ -289,7 +298,7 @@ async def get_stats(days: int = Query(7), usage_type: Optional[str] = Query(None
 
 
 @monitor_router.get("/users")
-async def get_users(search: Optional[str] = Query(None)):
+async def get_users(search: Optional[str] = Query(None), _: str = Depends(verify_monitor_access)):
     query = {}
     if search:
         or_conditions = [{"name": {"$regex": search, "$options": "i"}}]
@@ -328,7 +337,7 @@ async def get_users(search: Optional[str] = Query(None)):
 
 
 @monitor_router.get("/users/{admin_id}/details")
-async def get_user_details(admin_id: str):
+async def get_user_details(admin_id: str, _: str = Depends(verify_monitor_access)):
     agents_cursor = agent_collection.find({"admin_id": admin_id})
     agents = await agents_cursor.to_list(length=100)
 
@@ -360,7 +369,7 @@ async def get_user_details(admin_id: str):
 
 
 @monitor_router.get("/agents/{agent_id}/chats")
-async def get_agent_chats(agent_id: str):
+async def get_agent_chats(agent_id: str, _: str = Depends(verify_monitor_access)):
     sessions_cursor = session_collection.find({"agent_id": agent_id}).sort("created_at", -1).limit(20)
     sessions = await sessions_cursor.to_list(length=20)
 
@@ -385,7 +394,7 @@ async def get_agent_chats(agent_id: str):
 
 
 @monitor_router.get("/sessions/{session_id}/messages")
-async def get_session_messages(session_id: str):
+async def get_session_messages(session_id: str, _: str = Depends(verify_monitor_access)):
     messages_cursor = chat_collection.find({"session_id": session_id}).sort("created_at", 1)
     messages = await messages_cursor.to_list(length=100)
 
