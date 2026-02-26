@@ -31,6 +31,10 @@ PRICING = {
         "input": 0.3,
         "output": 2.5
     },
+    "gemini-2.5-flash-lite": {
+        "input": 0.1,
+        "output": 0.4
+    },
     "gemini-3-flash-preview": {
         "input": 0.5,
         "output": 3
