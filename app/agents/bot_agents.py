@@ -43,7 +43,7 @@ async def call_human_support(tool_context: ToolContext, query: str) -> dict:
         # 1. 更新 Session Mode (改為更新 session 而非 user)
         await session_collection.update_one(
             {"session_id": session_id},
-            {"$set": {"mode": "human", "updated_at": datetime.now(TAIPEI_TZ)}}
+            {"$set": {"mode": "human", "status": "open", "updated_at": datetime.now(TAIPEI_TZ)}}
         )
         
         # 2. 獲取 Agent 與部署資訊 (為了拿 admin_id 和 access_token)
@@ -54,17 +54,18 @@ async def call_human_support(tool_context: ToolContext, query: str) -> dict:
         admin_id = agent.get("admin_id")
         deploy_config = agent.get("deploy_config", {})
         access_token = deploy_config.get("access_token")
-        
-        if admin_id and access_token:
+        # 優先使用商家在 bot scope 下登記的通知 ID（存在 agent 頂層，不受重新部署影響）
+        admin_notify_id = agent.get("admin_notify_id") or admin_id
+        if admin_notify_id and access_token:
             line_api = LineBotApi(access_token)
             # 取得使用者名稱 (選用)
             user = await user_collection.find_one({"line_id": user_id})
             user_name = user.get("name", user_id) if user else user_id
-            
+
             notify_code = get_notify_code()
             notify_text = f"🔔 [真人客服通知]\n使用者：{user_name}\n時間：{datetime.now(TAIPEI_TZ).strftime('%Y-%m-%d %H:%M:%S')}\n訊息代碼：{notify_code}\n使用者訊息：{query}"
-            
-            line_api.push_message(admin_id, TextSendMessage(text=notify_text))
+
+            line_api.push_message(admin_notify_id, TextSendMessage(text=notify_text))
             return {"text": "已轉接真人客服"}
         else:
             return {"text": "轉接失敗，配置不完整。"}

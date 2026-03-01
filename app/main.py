@@ -2,6 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.api.router import api_router
 from app.api.monitor_router import monitor_router
+from app.api.inbox_router import inbox_router
 from app.core.config import settings
 import uvicorn
 
@@ -18,6 +19,7 @@ app.add_middleware(
 # Include the API router with /api prefix
 app.include_router(api_router, prefix="/api")
 app.include_router(monitor_router, prefix="/api/monitor")
+app.include_router(inbox_router, prefix="/api/inbox")
 
 if __name__ == "__main__":
     uvicorn.run("app.main:app", host=settings.HOST, port=settings.PORT, reload=True)

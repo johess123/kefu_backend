@@ -20,7 +20,7 @@ from app.services import line_richmenu_service
 from app.models.schemas import DeployLineRequest
 from app.services import agent_service
 from app.core.config import settings
-from app.core.database import agent_collection, user_collection, session_collection
+from app.core.database import agent_collection, user_collection, session_collection, chat_collection, member_collection
 
 # 用於紀錄 LINE Bot 設定的對照表 (即將移除，改用 MongoDB)
 _LINE_BOT_STORAGE = {}
@@ -48,9 +48,12 @@ async def show_loading(user_id: str, access_token: str):
 async def switch_mode(sid: str, new_mode: str, source="manual"):
     """切換客服模式並記錄到 MongoDB"""
     display_mode = "【真人客服】" if new_mode == "human" else "【AI客服】"
+    update_fields = {"mode": new_mode, "updated_at": datetime.now(TAIPEI_TZ)}
+    if new_mode == "human":
+        update_fields["status"] = "open"
     await session_collection.update_one(
         {"session_id": sid},
-        {"$set": {"mode": new_mode, "updated_at": datetime.now(TAIPEI_TZ)}}
+        {"$set": update_fields}
     )
     return f"已手動切換為 {display_mode} 模式。"
 
@@ -146,12 +149,24 @@ async def line_webhook(channel_id: str, request: Request, x_line_signature: str 
                         new_mode = params.get("mode")
                         reply_text = await switch_mode(stable_session_id, new_mode)
                         line_bot_api.reply_message(event.reply_token, TextSendMessage(text=reply_text))
+                        # 切換到人工模式時，通知商家
+                        if new_mode == "human":
+                            admin_notify_id = agent.get("admin_notify_id") or admin_id
+                            if admin_notify_id:
+                                try:
+                                    profile = line_bot_api.get_profile(line_user_id)
+                                    user_name = profile.display_name
+                                except:
+                                    user_name = line_user_id
+                                notify_code = get_notify_code()
+                                notify_text = f"🔔 [真人客服通知]\n使用者：{user_name}\n時間：{datetime.now(TAIPEI_TZ).strftime('%Y-%m-%d %H:%M:%S')}\n訊息代碼：{notify_code}\n使用者已切換為真人客服模式，請前往收件匣回覆。"
+                                line_bot_api.push_message(admin_notify_id, TextSendMessage(text=notify_text))
                 except Exception as e:
                     print(f"Error parsing postback: {e}")
 
             elif isinstance(event, MessageEvent) and isinstance(event.message, TextMessage):
                 user_msg = event.message.text[:100] if event.message.text else ""
-                
+
                 # 獲取使用者名稱
                 try:
                     profile = line_bot_api.get_profile(line_user_id)
@@ -159,16 +174,45 @@ async def line_webhook(channel_id: str, request: Request, x_line_signature: str 
                 except:
                     user_name = line_user_id
 
+                # 更新會員記錄（AI 模式和人工模式都執行，確保 CRM 完整）
+                await member_collection.update_one(
+                    {"line_id": line_user_id, "agent_id": agent_id_str},
+                    {
+                        "$set": {
+                            "name": user_name,
+                            "last_message_at": datetime.now(TAIPEI_TZ),
+                        },
+                        "$setOnInsert": {
+                            "created_at": datetime.now(TAIPEI_TZ),
+                        }
+                    },
+                    upsert=True
+                )
+
+                # 通知目標：優先使用 admin_notify_id（bot-scope），沒有才 fallback 到 admin_id
+                admin_notify_id = agent.get("admin_notify_id") or admin_id
+
                 # 1. 先檢査 Session mode
                 session_doc = await session_collection.find_one({"session_id": stable_session_id})
                 mode = session_doc.get("mode", "ai") if session_doc else "ai"
-                
+
                 if mode == "human":
-                    # 直接轉發給 Admin
-                    if admin_id:
+                    # 儲存用戶訊息到 chat_collection（人工模式也要記錄）
+                    await chat_collection.insert_one({
+                        "session_id": stable_session_id,
+                        "content": user_msg,
+                        "sender": "user",
+                        "created_at": datetime.now(TAIPEI_TZ),
+                    })
+                    await session_collection.update_one(
+                        {"session_id": stable_session_id},
+                        {"$set": {"updated_at": datetime.now(TAIPEI_TZ)}}
+                    )
+                    # 轉發通知給 Admin
+                    if admin_notify_id:
                         notify_code = get_notify_code()
                         notify_text = f"🔔 [真人客服通知]\n使用者：{user_name}\n時間：{datetime.now(TAIPEI_TZ).strftime('%Y-%m-%d %H:%M:%S')}\n訊息代碼：{notify_code}\n使用者訊息：{user_msg}"
-                        line_bot_api.push_message(admin_id, TextSendMessage(text=notify_text))
+                        line_bot_api.push_message(admin_notify_id, TextSendMessage(text=notify_text))
                 else:
                     # 2. 顯示 Loading 效果
                     await show_loading(line_user_id, access_token)
