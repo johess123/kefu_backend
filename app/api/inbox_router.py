@@ -1,3 +1,5 @@
+import asyncio
+import aiohttp
 from datetime import datetime
 from zoneinfo import ZoneInfo
 from fastapi import APIRouter, HTTPException, Query
@@ -232,3 +234,33 @@ async def close_session(session_id: str, body: CloseBody, userId: str = Query(..
         {"$set": {"mode": "ai", "status": "done", "updated_at": datetime.now(TAIPEI_TZ)}}
     )
     return {"status": "ok"}
+
+
+@inbox_router.get("/agents/{agent_id}/line-quota")
+async def get_line_quota(agent_id: str, userId: str = Query(...)):
+    agent = await verify_admin_agent_access(userId, agent_id)
+
+    access_token = agent.get("deploy_config", {}).get("access_token")
+    if not access_token:
+        raise HTTPException(status_code=400, detail="Agent has no LINE access token. Please deploy LINE first.")
+
+    headers = {"Authorization": f"Bearer {access_token}"}
+
+    async def _fetch_json(url: str) -> dict:
+        async with aiohttp.ClientSession() as http:
+            async with http.get(url, headers=headers) as res:
+                return await res.json()
+
+    quota_data, consumption_data = await asyncio.gather(
+        _fetch_json("https://api.line.me/v2/bot/message/quota"),
+        _fetch_json("https://api.line.me/v2/bot/message/quota/consumption"),
+    )
+
+    quota_type = quota_data.get("type", "none")
+    used = consumption_data.get("totalUsage", 0)
+
+    if quota_type == "none":
+        return {"type": "none", "limit": None, "used": used, "remaining": None}
+
+    limit = quota_data.get("value", 0)
+    return {"type": quota_type, "limit": limit, "used": used, "remaining": limit - used}
